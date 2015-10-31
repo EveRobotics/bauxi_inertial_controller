@@ -14,6 +14,90 @@ Arduino     MARG GY-85
 #include "Accel_ADXL345.h"  // ADXL345 Accelerometer Library
 #include "Mag_HMC5883L.h" // HMC5883L Magnetometer Library
 #include "Gyro_ITG3200.h"  // Rate gyro
+#include "moving_average.h"
+
+
+#include <math.h>
+
+
+// Process received serial data for configuration and control commands:
+class CommandInterpreter {
+
+public:
+    CommandInterpreter() {
+        // Process instructions from the system controller:
+        // set mag offset X
+        // set mag offset Y
+        // set mag offset Z
+
+        // set mag offset Z
+
+
+    }
+
+    void readCommands() {
+        while(Serial.available() > 0) {
+            // read the incoming bytes:
+            unsigned char command = Serial.read();
+            Serial.print("Received command: ");
+            Serial.print(command);
+            Serial.print(", param: ");
+            if(Serial.read() == ':') {
+                if(command == CMD_SPEED_LEFT) {
+                    _speedLeft = Serial.parseInt();
+                    Serial.println(_speedLeft);
+                } else if(command == CMD_SPEED_RIGHT) {
+                    _speedRight = Serial.parseInt();
+                    Serial.println(_speedRight);
+                } else if(command == CMD_RUN_MODE) {
+                    _runMode = Serial.parseInt();
+                    Serial.println(_runMode);
+                } else if(command == CMD_RESET) {
+                    Serial.println("Resetting spacial navigation controller.");    
+                    resetFunc();  //call reset
+                }
+                // Parse user indicator commands and configuration commands.
+                if(Serial.read() != ';') {
+                    Serial.println("Received invalid end of message.");    
+                }
+            }
+        }
+    }
+
+    int getSpeedLeft() {
+        return _speedLeft;
+    }
+
+    int getSpeedRight() {
+        return _speedRight;
+    }
+    
+    int getRunMode() {
+        return _runMode;
+    }
+
+
+private:
+
+    enum InputCommands {
+        CMD_RESET           = 0x61, // 'a' abort, reset the micro-controller.
+        CMD_SPEED_LEFT      = 0x6c, // 'l' left, valid speeds: (-10, 10)
+        CMD_SPEED_RIGHT     = 0x72, // 'r' right, valid speeds: (-10, 10)
+        CMD_RUN_MODE        = 0x6d, // 'm' mode: 0 = AUTO_AVOID, 1 = EXT_CONTROL, 2 = REMOTE_CONTROL
+        // ...
+    };
+
+    int _speedLeft;
+    int _speedRight;
+    int _runMode;
+
+    unsigned char _userIndicator1;
+    unsigned char _userIndicator2;
+    unsigned char _userIndicator3;
+    unsigned char _userIndicator4;
+
+};
+
 
 
 HMC5883L compass;
@@ -39,6 +123,18 @@ unsigned int prevMicroseconds;
 unsigned long deltaTime = 0; 
 // The "i" message is the inertial navigation message.
 String iMessage;
+
+WeightedMovingAverage *magWmaX;
+WeightedMovingAverage *magWmaY;
+WeightedMovingAverage *magWmaZ;
+
+WeightedMovingAverage *accWmaX;
+WeightedMovingAverage *accWmaY;
+WeightedMovingAverage *accWmaZ;
+
+WeightedMovingAverage *gyroWmaX;
+WeightedMovingAverage *gyroWmaY;
+WeightedMovingAverage *gyroWmaZ;
 
 int error = 0; 
 unsigned long time, looptime;
@@ -75,7 +171,34 @@ void setup() {
 
     // Set a status LED to indicate we started up, indicate
     // if there was an initialization error.
+
+
+    magWmaX = new WeightedMovingAverage(20);
+    magWmaY = new WeightedMovingAverage(20);
+    magWmaZ = new WeightedMovingAverage(20);
+
+    /*
+    accWmaX = new WeightedMovingAverage(5);
+    accWmaY = new WeightedMovingAverage(5);
+    accWmaZ = new WeightedMovingAverage(5);
+
+    gyroWmaX = new WeightedMovingAverage(5);
+    gyroWmaY = new WeightedMovingAverage(5);
+    gyroWmaZ = new WeightedMovingAverage(5);
+    */
 }
+
+
+
+float heading = 0.0;
+float headingRadians = 0.0;
+float headingDegrees = 0.0;
+
+// Earth's magnetic field varies by location. Add or subtract 
+// a declination to get a more accurate heading. Calculate 
+// your's here:
+// http://www.ngdc.noaa.gov/geomag-web/#declination
+#define DECLINATION -8.58 // Declination (degrees) in Boulder, CO.
 
 void loop() {
     // Store the time-stamp.
@@ -120,9 +243,66 @@ void loop() {
     iMessage = iMessage + (float)gyroZ + ",";
     // Add the time-stamp to the string:
     iMessage = iMessage + (unsigned long)milliseconds + ",";
-	iMessage = iMessage + (unsigned int)microseconds;
+    iMessage = iMessage + (unsigned int)microseconds;
 
     Serial.println(iMessage);
-    delay(10);
+
+
+    magWmaX->addSample(magX);
+    magWmaY->addSample(magY);
+    magWmaZ->addSample(magZ);
+
+    iMessage = "a:";
+    iMessage = iMessage + magWmaX->computeAverage() + ",";
+    iMessage = iMessage + magWmaY->computeAverage() + ",";
+    iMessage = iMessage + magWmaZ->computeAverage() + ",";
+
+    /*
+    // Add the acceleration data to the
+    accWmaX->addSample(accX);
+    accWmaY->addSample(accY);
+    accWmaZ->addSample(accZ);
+    iMessage = iMessage + accWmaX->computeAverage() + ",";
+    iMessage = iMessage + accWmaY->computeAverage() + ",";
+    iMessage = iMessage + accWmaZ->computeAverage() + ",";
+    // Gyro data.
+    gyroWmaX->addSample(gyroX);
+    gyroWmaY->addSample(gyroY);
+    gyroWmaZ->addSample(gyroZ);
+    iMessage = iMessage + gyroWmaX->computeAverage() + ",";
+    iMessage = iMessage + gyroWmaY->computeAverage() + ",";
+    iMessage = iMessage + gyroWmaZ->computeAverage() + ",";
+    // Add the time-stamp to the string:
+    iMessage = iMessage + (unsigned long)milliseconds + ",";
+    iMessage = iMessage + (unsigned int)microseconds;
+    */
+    Serial.println(iMessage);
+
+
+    
+    /*
+    // Compute pose using rate gyro, integrate the degrees per second 
+    // to absolute degrees (X, Y, Z).
+    
+    // Take the raw data and convert it to magnetometer yaw (heading)
+    // 
+	float heading;
+	if (magY == 0)
+		heading = (magX < 0) ? 180.0 : 0;
+	else
+	heading = atan2(magX, magY);
+
+	heading -= DECLINATION * PI / 180;
+
+	if (heading > PI) heading -= (2 * PI);
+	else if (heading < -PI) heading += (2 * PI);
+	else if (heading < 0) heading += 2 * PI;
+
+	heading *= 180.0 / PI;
+  
+    Serial.println(heading);
+    */
+    
+    delay(100);
 }
 
