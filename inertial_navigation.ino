@@ -29,7 +29,7 @@ public:
         // set/get mag offset X
         // set/get mag offset Y
         // set/get mag offset Z
-        // set/get mag offset Z
+        // etc..
     }
 
     void readCommands() {
@@ -40,17 +40,11 @@ public:
             Serial.print(command);
             Serial.print(", param: ");
             if(Serial.read() == ':') {
-                if(command == CMD_SPEED_LEFT) {
-                    _speedLeft = Serial.parseInt();
-                    Serial.println(_speedLeft);
-                } else if(command == CMD_SPEED_RIGHT) {
-                    _speedRight = Serial.parseInt();
-                    Serial.println(_speedRight);
-                } else if(command == CMD_RUN_MODE) {
-                    _runMode = Serial.parseInt();
-                    Serial.println(_runMode);
+                if(command == CMD_MAG_OFFSET_X) {
+                    _magOffsetX = Serial.parseFloat();
+                    Serial.println(_magOffsetX);
                 } else if(command == CMD_RESET) {
-                    Serial.println("Resetting spacial navigation controller.");    
+                    Serial.println("Resetting inertial navigation controller.");    
                     resetFunc();  //call reset
                 }
                 // Parse user indicator commands and configuration commands.
@@ -61,16 +55,16 @@ public:
         }
     }
 
-    int getSpeedLeft() {
-        return _speedLeft;
+    int getMagX() {
+        return _magOffsetX;
     }
 
-    int getSpeedRight() {
-        return _speedRight;
+    int getMagY() {
+        return _magOffsetY;
     }
     
-    int getRunMode() {
-        return _runMode;
+    int getMagZ() {
+        return _magOffsetZ;
     }
 
 
@@ -78,20 +72,15 @@ private:
 
     enum InputCommands {
         CMD_RESET           = 0x61, // 'a' abort, reset the micro-controller.
-        CMD_SPEED_LEFT      = 0x6c, // 'l' left, valid speeds: (-10, 10)
-        CMD_SPEED_RIGHT     = 0x72, // 'r' right, valid speeds: (-10, 10)
-        CMD_RUN_MODE        = 0x6d, // 'm' mode: 0 = AUTO_AVOID, 1 = EXT_CONTROL, 2 = REMOTE_CONTROL
+        CMD_MAG_OFFSET_X    = 0x6d, // 'm' magnetic field sensor X offset.
+        CMD_MAG_OFFSET_Y    = 0x6e, // 'n' magnetic field sensor Y offset.
+        CMD_MAG_OFFSET_Z    = 0x6f, // 'o' magnetic field sensor Z offset.
         // ...
     };
 
-    int _speedLeft;
-    int _speedRight;
-    int _runMode;
-
-    unsigned char _userIndicator1;
-    unsigned char _userIndicator2;
-    unsigned char _userIndicator3;
-    unsigned char _userIndicator4;
+    float _magOffsetX = 0.0;
+    float _magOffsetY = 0.0;
+    float _magOffsetZ = 0.0;
 
 };
 
@@ -384,11 +373,11 @@ ITG3200 gyro = ITG3200();
 float magX = 0, magY = 0, magZ = 0;
 // Compass variables (magnetometer) adjusted:
 double adjMagX = 0, adjMagY = 0, adjMagZ = 0;
-// Geometric moving average...?
+// Exponential weighted moving average.
 double expMagX = 0, expMagY = 0, expMagZ = 0;
 
-float magOffsetX = 0.0; // 196.1
-float magOffsetY = 0.0; // 234.625
+float magOffsetX = 0.0; //
+float magOffsetY = 0.0; //
 float magOffsetZ = 0.0; //
 
 // Accelerometer variables:
@@ -433,6 +422,11 @@ unsigned long milliseconds = 0;
 unsigned int microseconds = 0;
 double time0 = 0.0;
 double time1 = 0.0;
+
+
+float *offsetTable[] = { &magOffsetX, &magOffsetY, &magOffsetZ
+    , &accOffsetX, &accOffsetY, &accOffsetY
+    , &gyroOffsetX, &gyroOffsetY, &gyroOffsetZ };
 
 // The "i" message is the inertial navigation message.
 String iMessage;
@@ -510,53 +504,28 @@ void setup() {
     magCenterWmaY = new ExponentialMovingAverage(0.05);
     
     eeAddress = 0;
-    EEPROM.get(eeAddress, magOffsetX);
-    if(testFloat(magOffsetX) != 0) {
-        magOffsetX = 0.0;
+    for(; &gyroOffsetZ != offsetTable[eeAddress]; eeAddress += sizeof(float)) {
+        EEPROM.get(eeAddress, *offsetTable[eeAddress]);
+        if(testFloat(*offsetTable[eeAddress]) != 0) {
+            *offsetTable[eeAddress] = 0.0;
+        }
     }
-    eeAddress += sizeof(float);
-    EEPROM.get(eeAddress, magOffsetY);
-    if(testFloat(magOffsetY) != 0) {
-        magOffsetY = 0.0;
+
+    // We want to print the retrieved stored value, but we are out of program space.
+    /*
+    if(magOffsetX != 0.0) {
+        magCenterWmaX->addSample(-magOffsetX);
+        Serial1.println("Initialized mag offset X to:");
+        Serial1.println(magOffsetX);
     }
-    eeAddress += sizeof(float);
-    EEPROM.get(eeAddress, magOffsetZ);
-    if(testFloat(magOffsetZ) != 0) {
-        magOffsetZ = 0.0;
+
+    if(magOffsetY != 0.0) {
+        //magCenterWmaY->addSample(-magOffsetY);
+        //Serial1.println("Initialized mag offset Y to:");
+        Serial1.println(magOffsetY);
     }
-    eeAddress += sizeof(float);
-    //
-    EEPROM.get(eeAddress, accOffsetX);
-    if(testFloat(accOffsetX) != 0) {
-        accOffsetX = 0.0;
-    }
-    eeAddress += sizeof(float);
-    EEPROM.get(eeAddress, accOffsetY);
-    if(testFloat(accOffsetY) != 0) {
-        accOffsetY = 0.0;
-    }
-    eeAddress += sizeof(float);
-    EEPROM.get(eeAddress, accOffsetZ);
-    if(testFloat(accOffsetZ) != 0) {
-        accOffsetZ = 0.0;
-    }
-    eeAddress += sizeof(float);
-    //
-    EEPROM.get(eeAddress, gyroOffsetX);
-    if(testFloat(gyroOffsetX) != 0) {
-        gyroOffsetX = 0.0;
-    }
-    eeAddress += sizeof(float);
-    EEPROM.get(eeAddress, gyroOffsetY);
-    if(testFloat(gyroOffsetY) != 0) {
-        gyroOffsetY = 0.0;
-    }
-    eeAddress += sizeof(float);
-    EEPROM.get(eeAddress, gyroOffsetZ);
-    if(testFloat(gyroOffsetZ) != 0) {
-        gyroOffsetZ = 0.0;
-    }
-    eeAddress += sizeof(float);
+    */
+
     delay(60);
 }
 
@@ -820,26 +789,13 @@ void loop() {
             // Should we store these values in the EEPROM in in adition to the
             // magOffsetX, magOffsetY, and magOffsetZ values.
             eeAddress = 0;
-            EEPROM.put(eeAddress, magOffsetX);
-            eeAddress += sizeof(float);
-            EEPROM.put(eeAddress, magOffsetY);
-            eeAddress += sizeof(float);
-            EEPROM.put(eeAddress, magOffsetZ);
-            eeAddress += sizeof(float);
-            //
-            EEPROM.put(eeAddress, accOffsetX);
-            eeAddress += sizeof(float);
-            EEPROM.put(eeAddress, accOffsetY);
-            eeAddress += sizeof(float);
-            EEPROM.put(eeAddress, accOffsetZ);
-            eeAddress += sizeof(float);
-            //
-            EEPROM.put(eeAddress, gyroOffsetX);
-            eeAddress += sizeof(float);
-            EEPROM.put(eeAddress, gyroOffsetY);
-            eeAddress += sizeof(float);
-            EEPROM.put(eeAddress, gyroOffsetZ);
-            eeAddress += sizeof(float);
+            for(; &gyroOffsetZ != offsetTable[eeAddress]; eeAddress += sizeof(float)) {
+                EEPROM.put(eeAddress, *offsetTable[eeAddress]);
+            }
+            //Serial1.println("Storing mag offset X as:");
+            //Serial1.println(magOffsetX);
+            //Serial1.println("Storing mag offset Y as:");
+            //Serial1.println(magOffsetY);
         } else {
             atRestCount++;
         }
