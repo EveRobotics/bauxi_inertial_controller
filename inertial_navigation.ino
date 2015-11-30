@@ -452,7 +452,7 @@ unsigned long time, looptime;
 int eeAddress = 0;   //Location we want the data to be put.
 
 void setup() {
-    Serial1.begin(9600);
+    Serial.begin(57600);
 
     milliseconds = millis();
     microseconds = micros() % 1000;
@@ -473,14 +473,14 @@ void setup() {
     // Set the scale to +/- 1.3 Ga of the compass.
     error = compass.SetScale(1.3);
     if(error != 0) { // If there is an error, print it out.
-        Serial1.println(compass.GetErrorText(error));
+        Serial.println(compass.GetErrorText(error));
     }
 
     // Set the measurement mode to Continuous
     error = compass.SetMeasurementMode(Measurement_Continuous);
     if(error != 0) { 
         // If there is an error, print it out.
-        Serial1.println(compass.GetErrorText(error));
+        Serial.println(compass.GetErrorText(error));
     }
 
     gyro.init(ITG3200_ADDR_AD0_LOW);
@@ -512,19 +512,18 @@ void setup() {
     }
 
     // We want to print the retrieved stored value, but we are out of program space.
-    /*
+    
     if(magOffsetX != 0.0) {
         magCenterWmaX->addSample(-magOffsetX);
-        Serial1.println("Initialized mag offset X to:");
-        Serial1.println(magOffsetX);
+        //Serial.print("Initialized mag offset (X, Y) to: ");
+        //Serial.print(magOffsetX);
     }
 
     if(magOffsetY != 0.0) {
-        //magCenterWmaY->addSample(-magOffsetY);
-        //Serial1.println("Initialized mag offset Y to:");
-        Serial1.println(magOffsetY);
+        magCenterWmaY->addSample(-magOffsetY);
+        //Serial.println("Initialized mag offset Y to:");
+        //Serial.println(magOffsetY);
     }
-    */
 
     delay(60);
 }
@@ -535,6 +534,7 @@ float heading = 0.0;
 // Time in microseconds between now an previous.
 double deltaTime = 0.0;
 
+// 255 / 9.8 m/s^2
 double accRatio = 26.020408163265305;
 
 const float MAG_MAX_VAL = 1500.0;
@@ -592,11 +592,12 @@ void loop() {
     
     // Accelerometer, Magnetometer and Gyroscope Output
     iMessage = "i:";
-    /*
+
+    // Add the megnetometer data to the message.
     iMessage = iMessage + (float)magX + ",";
     iMessage = iMessage + (float)magY + ",";
     iMessage = iMessage + (float)magZ + ",";
-    // Add the acceleration data to the
+    // Add the acceleration data to the message.
     iMessage = iMessage + (int)accX + ",";
     iMessage = iMessage + (int)accY + ",";
     iMessage = iMessage + (int)accZ + ",";
@@ -604,7 +605,8 @@ void loop() {
     iMessage = iMessage + (float)gyroX + ",";
     iMessage = iMessage + (float)gyroY + ",";
     iMessage = iMessage + (float)gyroZ + ",";
-    */
+
+
     // Add the time-stamp to the string:
     iMessage = iMessage + (unsigned long)milliseconds + ",";
     //iMessage = iMessage + (int)microseconds + ",";
@@ -792,10 +794,10 @@ void loop() {
             for(; &gyroOffsetZ != offsetTable[eeAddress]; eeAddress += sizeof(float)) {
                 EEPROM.put(eeAddress, *offsetTable[eeAddress]);
             }
-            //Serial1.println("Storing mag offset X as:");
-            //Serial1.println(magOffsetX);
-            //Serial1.println("Storing mag offset Y as:");
-            //Serial1.println(magOffsetY);
+            //Serial.println("Storing mag offset X as:");
+            //Serial.println(magOffsetX);
+            //Serial.println("Storing mag offset Y as:");
+            //Serial.println(magOffsetY);
         } else {
             atRestCount++;
         }
@@ -834,7 +836,7 @@ void loop() {
     iMessage = iMessage + (unsigned int)(inMotion 
         + (calibratedAccGyro << 1)
         + (calibratedCompass << 2)) + ",";
-    Serial1.println(iMessage);
+    Serial.println(iMessage);
     
 }
 
