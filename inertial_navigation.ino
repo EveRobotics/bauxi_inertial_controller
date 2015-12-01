@@ -544,7 +544,7 @@ const float ACC_DELTA_THRESH = 2.5;
 const float GYRO_DELTA_THRESH = 3.2;
 
 const float ACC_THRESH_1 = 10.8; // Uncalibrated, threshold value to indicate movement.
-const float ACC_THRESH_2 = 9.8; // Calibrated threshold value to indicate movement.
+const float ACC_THRESH_2 = 9.85; // Calibrated threshold value to indicate movement.
 const float GYRO_THRESH_1 = 6.0; // Uncalibrated magnitude beyond which motion is occuring.
 const float GYRO_THRESH_2 = 1.8; // Calibrated magnitude motion threshold. 
 
@@ -788,7 +788,8 @@ void loop() {
             gyroOffsetY = -gyroWmaY->computeAverage();
             gyroOffsetZ = -gyroWmaZ->computeAverage();
             calibratedAccGyro = true;
-            // Should we store these values in the EEPROM in in adition to the
+        } else if(atRestCount == 10) {
+            // We store these values in the EEPROM in in adition to the
             // magOffsetX, magOffsetY, and magOffsetZ values.
             eeAddress = 0;
             for(; &gyroOffsetZ != offsetTable[eeAddress]; eeAddress += sizeof(float)) {
@@ -798,6 +799,7 @@ void loop() {
             //Serial.println(magOffsetX);
             //Serial.println("Storing mag offset Y as:");
             //Serial.println(magOffsetY);
+            atRestCount++;
         } else {
             atRestCount++;
         }
@@ -838,5 +840,7 @@ void loop() {
         + (calibratedCompass << 2)) + ",";
     Serial.println(iMessage);
     
+    delay(80);
+    //delay(100 - (int)(deltaTime * 1000.0));
 }
 
