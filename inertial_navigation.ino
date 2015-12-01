@@ -1,13 +1,9 @@
-// Arduino code and libraries are available to download - link below the video.
-// 
 
-/*
-Arduino     MARG GY-85
-    A5            SCL
-    A4            SDA
-    3.3V          VCC
-    GND           GND
-*/ 
+/** @file inertial_navigation.ino
+ *  @brief Beagle Inertial Navigation controller.
+ *
+ *  @author Weston Turner
+ */
 
 #include <Wire.h>
 #include "Accel_ADXL345.h"  // ADXL345 Accelerometer Library
