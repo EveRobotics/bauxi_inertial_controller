@@ -588,7 +588,7 @@ void loop() {
     
     // Accelerometer, Magnetometer and Gyroscope Output
     iMessage = "i:";
-
+    // Deliver raw IMU data.
     // Add the megnetometer data to the message.
     iMessage = iMessage + (float)magX + ",";
     iMessage = iMessage + (float)magY + ",";
@@ -602,10 +602,6 @@ void loop() {
     iMessage = iMessage + (float)gyroY + ",";
     iMessage = iMessage + (float)gyroZ + ",";
 
-
-    // Add the time-stamp to the string:
-    iMessage = iMessage + (unsigned long)milliseconds + ",";
-    //iMessage = iMessage + (int)microseconds + ",";
     
     //==========================================================================
     // MAGNETOMETER CALCULATIONS:
@@ -830,10 +826,16 @@ void loop() {
     iMessage = iMessage + (double)gyroDegreesY + ",";
     iMessage = iMessage + (double)gyroDegreesZ + ",";
     
-    iMessage = iMessage + (double)deltaTime + ",";
+    //iMessage = iMessage + (double)deltaTime + ",";
+    // status field.
     iMessage = iMessage + (unsigned int)(inMotion 
         + (calibratedAccGyro << 1)
         + (calibratedCompass << 2)) + ",";
+
+    // Add the time-stamp to the string:
+    iMessage = iMessage + (unsigned long)milliseconds + ",";
+    iMessage = iMessage + (int)microseconds + ",";
+
     Serial.println(iMessage);
     
     delay(80);
