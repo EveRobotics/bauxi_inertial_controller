@@ -3,8 +3,22 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 
-unsigned long microseconds = 0;
-unsigned long milliseconds = 0;
+/*
+ * Orientation Sensor Test
+ *
+ * ------------------------------------
+ * Sensor:     BNO055
+ * Driver Ver: 1
+ * Unique ID:  55
+ * Max Value:  0.00 xxx
+ * Min Value:  0.00 xxx
+ * Resolution: 0.01 xxx
+ * ------------------------------------
+ *
+ * i:245.25,-0.13,0.94,0.00,0.00,0.00,0.00,0.00,0.00,0,0,0,0,3,3,0,3,21,143493,8,
+ * i:245.25,-0.13,0.94,0.00,0.00,0.00,0.00,0.00,0.00,0,0,0,0,3,3,0,3,21,143603,792,
+ * i:245.25,-0.13,0.94,0.00,0.00,0.00,0.00,0.00,0.00,0,0,0,0,3,3,0,3,21,143714,480,
+ */
 
 class InertialController {
 
@@ -22,6 +36,12 @@ InertialController(void) {
     _bn055->setExtCrystalUse(false);
 }
 
+/**************************************************************************/
+/*
+    Displays some basic information on this sensor from the unified
+    sensor API sensor_t type (see Adafruit_Sensor for more information)
+*/
+/**************************************************************************/
 /* Display some basic information on this sensor */
 void displaySensorDetails(void) {
     sensor_t sensor;
@@ -115,6 +135,48 @@ float getRoll(void) {
     return _roll;
 }
 
+// Meters per second
+float getAccSpeedX(void) {
+    return 0.0;
+}
+
+float getAccSpeedY(void) {
+    return 0.0;
+}
+
+float getAccSpeedZ(void) {
+    return 0.0;
+}
+
+float getAccDistX(void) {
+    return 0.0;
+}
+
+float getAccDistY(void) {
+    return 0.0;
+}
+
+float getAccDistZ(void) {
+    return 0.0;
+}
+
+// Maybe long int is needed
+int getGyroDegreesX(void) {
+    return 0;
+}
+
+int getGyroDegreesY(void) {
+    return 0;
+}
+
+int getGyroDegreesZ(void) {
+    return 0;
+}
+
+bool getInMotion(void) {
+    return false;
+}
+
 unsigned char getCalibrationSys(void) {
     return _calibrationSys;
 }
@@ -157,16 +219,6 @@ unsigned short _prevMicroseconds = 0;
 unsigned long _deltaTime = 0; // Time in microseconds between now an previous.
 };
 
-/**************************************************************************/
-/*
-    Displays some basic information on this sensor from the unified
-    sensor API sensor_t type (see Adafruit_Sensor for more information)
-*/
-/**************************************************************************/
-void displaySensorDetails(void) {
-
-}
-
 // Format sensor data and other platform data into messages to send to the PC:
 void sendSystemMessage(InertialController* ctrl) {
     String message = String("i:");
@@ -174,13 +226,29 @@ void sendSystemMessage(InertialController* ctrl) {
             + ctrl->getHeading() + ","
             + ctrl->getPitch() + ","
             + ctrl->getRoll() + ","
+            // What speed are we going according to the accelerometer
+            + ctrl->getAccSpeedX() + ","
+            + ctrl->getAccSpeedY() + ","
+            + ctrl->getAccSpeedZ() + ","
+            // How far have we gone according to the accelerometer
+            + ctrl->getAccDistX() + ","
+            + ctrl->getAccDistY() + ","
+            + ctrl->getAccDistZ() + ","
+            // How much have we rotated.
+            + ctrl->getGyroDegreesX() + ","
+            + ctrl->getGyroDegreesY() + ","
+            + ctrl->getGyroDegreesZ() + ","
+            // Are we moving? Consider packing these values into a short int.
+            + ctrl->getInMotion() + "," // Byte 1: in motion + system cal + gyro cal
+            // Calibration status
             + ctrl->getCalibrationSys() + ","
             + ctrl->getCalibrationGyro() + ","
-            + ctrl->getCalibrationAccel() + ","
+            + ctrl->getCalibrationAccel() + "," // Byte 2: Accel cal + mag cal
             + ctrl->getCalibrationMag() + ","
             + ctrl->getTemperature() + ","
             + ctrl->getMilliseconds() + ","
             + ctrl->getMicroseconds() + ",\n";
+
     Serial.print(message);
 }
 
@@ -223,6 +291,7 @@ void setup(void) {
     Serial.begin(57600);
     Serial.println("Orientation Sensor Test"); Serial.println("");
     controller = new InertialController();
+    controller->displaySensorDetails();
     pinMode(A2, OUTPUT);
     delay(1000);
 }
