@@ -4,7 +4,15 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 
+#define SHOW_FREE_MEMORY 1
 #define DEBUG_PRINT 0
+
+#if SHOW_FREE_MEMORY
+#include <MemoryFree.h>
+#endif
+
+void(*resetFunc)(void) = 0; //declare reset function @ address 0
+
 const double DEG_PER_RAD = 180.0 / M_PI;
 /*
  * Orientation Sensor Test
@@ -27,280 +35,322 @@ class InertialController {
 
 public:
 
-InertialController(void) {
-    _bn055 = new Adafruit_BNO055(55);
-    /* Initialize the sensor */
-    if(!_bn055->begin()) {
-        /* There was a problem detecting the BNO055 ... check your connections */
-        Serial.print("No BNO055 detected!");
-        while(1);
-    }
-    /* Use external crystal for better accuracy */
-    _bn055->setExtCrystalUse(false);
-}
-
-/**************************************************************************/
-/*
-    Displays some basic information on this sensor from the unified
-    sensor API sensor_t type (see Adafruit_Sensor for more information)
-*/
-/**************************************************************************/
-/* Display some basic information on this sensor */
-void displaySensorDetails(void) {
-    sensor_t sensor;
-    _bn055->getSensor(&sensor);
-
-#if DEBUG_PRINT
-    Serial.print("------------------------------------\nSensor:     ");
-    Serial.print(sensor.name);
-    Serial.print("\nDriver Ver: ");
-    Serial.print(sensor.version);
-    Serial.print("\nUnique ID:  ");
-    Serial.print(sensor.sensor_id);
-    Serial.print("\nMax Value:  ");
-    Serial.print(sensor.max_value);
-    Serial.print(" xxx\nMin Value:  ");
-    Serial.print(sensor.min_value);
-    Serial.print(" xxx\nResolution: ");
-    Serial.print(sensor.resolution);
-    Serial.print(" xxx\n------------------------------------\n");
-    delay(500);
-#endif
-
-}
-
-/** Board layout:
- *     +----------+
- *     |         *| RST   PITCH  ROLL  HEADING
- * ADR |*        *| SCL
- * INT |*        *| SDA     ^            /->
- * PS1 |*        *| GND     |            |
- * PS0 |*        *| 3VO     Y    Z-->    \-X
- *     |         *| VIN
- *     +----------+
- */
-
-void pollSensorData(void) {
-    /* Get a new sensor event */
-    sensors_event_t event;
-    _bn055->getEvent(&event);
-    // Orientation:
-    _heading = (float)event.orientation.x;
-    _pitch = (float)event.orientation.y;
-    _roll = (float)event.orientation.z;
-    // Calibration:
-    /* Also get calibration data for each sensor. */
-    _bn055->getCalibration(&_calibrationSys, &_calibrationGyro
-            , &_calibrationAccel, &_calibrationMag);
-
-    // TODO: make user indicators for each calibration status.
-    if(_calibrationMag != 0) {
-        digitalWrite(A2, HIGH);
-    } else {
-        digitalWrite(A2, LOW);
+    InertialController(void) {
+        _bn055 = new Adafruit_BNO055(55);
+        /* Initialize the sensor */
+        if(!_bn055->begin()) {
+            /* There was a problem detecting the BNO055 ... check your connections */
+            Serial.print("No BNO055 detected!");
+            while(1);
+        }
+        /* Use external crystal for better accuracy */
+        _bn055->setExtCrystalUse(false);
     }
 
-    /* Get a new sensor event */
-    imu::Vector<3> vec = _bn055->getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
-    // - VECTOR_LINEARACCEL   - m/s^2
-    double accelX = vec.x() - OFFSET_ACCEL_X;
-    double accelY = vec.y() - OFFSET_ACCEL_Y;
-    double accelZ = vec.z() - OFFSET_ACCEL_Z;
+    /**************************************************************************/
+    /*
+        Displays some basic information on this sensor from the unified
+        sensor API sensor_t type (see Adafruit_Sensor for more information)
+    */
+    /**************************************************************************/
+    /* Display some basic information on this sensor */
+    void displaySensorDetails(void) {
+        sensor_t sensor;
+        _bn055->getSensor(&sensor);
 
-    vec = _bn055->getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-    double gyroX = vec.x();
-    double gyroY = vec.y();
-    double gyroZ = vec.z();
+    #if DEBUG_PRINT
+        Serial.print("------------------------------------\nSensor:     ");
+        Serial.print(sensor.name);
+        Serial.print("\nDriver Ver: ");
+        Serial.print(sensor.version);
+        Serial.print("\nUnique ID:  ");
+        Serial.print(sensor.sensor_id);
+        Serial.print("\nMax Value:  ");
+        Serial.print(sensor.max_value);
+        Serial.print(" xxx\nMin Value:  ");
+        Serial.print(sensor.min_value);
+        Serial.print(" xxx\nResolution: ");
+        Serial.print(sensor.resolution);
+        Serial.print(" xxx\n------------------------------------\n");
+        delay(500);
+    #endif
 
-#if DEBUG_PRINT
-    Serial.print("accX: ");
-    Serial.print(accelX);
-    Serial.print(", accelY: ");
-    Serial.print(accelY);
-    Serial.print(", accelZ: ");
-    Serial.print(accelZ);
-    Serial.print("\n");
-    Serial.print("gyroX: ");
-    Serial.print(gyroX);
-    Serial.print(", gyroY: ");
-    Serial.print(gyroY);
-    Serial.print(", gyroZ: ");
-    Serial.print(gyroZ);
-    Serial.print("\n");
-#endif
+    }
 
-    // If any of these are non zero, then we are in motion.
-    // Maybe round to the nearest hundredth or thousanth.
-    if(abs(accelX) > 0.2 || abs(accelY) > 0.2 || abs(accelZ) > 0.3
-            || abs(gyroX) > 0.05 || abs(gyroY) > 0.05 || abs(gyroZ) > 0.05) {
+    /** Board layout:
+     *     +----------+
+     *     |         *| RST   PITCH  ROLL  HEADING
+     * ADR |*        *| SCL
+     * INT |*        *| SDA     ^            /->
+     * PS1 |*        *| GND     |            |
+     * PS0 |*        *| 3VO     Y    Z-->    \-X
+     *     |         *| VIN
+     *     +----------+
+     */
 
-        double seconds = (double)_deltaTime / 1000000.0;
+    void pollSensorData(void) {
+        /* Get a new sensor event */
+        sensors_event_t event;
+        _bn055->getEvent(&event);
+        // Orientation:
+        _heading = (float)event.orientation.x;
+        _pitch = (float)event.orientation.y;
+        _roll = (float)event.orientation.z;
+        // Calibration:
+        /* Also get calibration data for each sensor. */
+        _bn055->getCalibration(&_calibrationSys, &_calibrationGyro
+                , &_calibrationAccel, &_calibrationMag);
 
-        if(_calibrationAccel != 0 || _calibrationSys !=0) {
-            _accSpeedX += accelX * seconds;
-            _accSpeedY += accelY * seconds;
-            _accSpeedZ += accelZ * seconds;
-            //
-            _accDistX += _accSpeedX * seconds;
-            _accDistY += _accSpeedY * seconds;
-            _accDistZ += _accSpeedZ * seconds;
+        // TODO: make user indicators for each calibration status.
+        if(_calibrationMag != 0) {
+            digitalWrite(A2, HIGH);
+        } else {
+            digitalWrite(A2, LOW);
         }
 
-        if(_calibrationGyro != 0) {
-            _gyroDegreesX += gyroX * DEG_PER_RAD * seconds;
-            _gyroDegreesY += gyroY * DEG_PER_RAD * seconds;
-            _gyroDegreesZ += gyroZ * DEG_PER_RAD * seconds;
+        /* Get a new sensor event */
+        imu::Vector<3> vec = _bn055->getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+        // - VECTOR_LINEARACCEL   - m/s^2
+        double accelX = vec.x() - OFFSET_ACCEL_X;
+        double accelY = vec.y() - OFFSET_ACCEL_Y;
+        double accelZ = vec.z() - OFFSET_ACCEL_Z;
+
+        vec = _bn055->getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+        double gyroX = vec.x();
+        double gyroY = vec.y();
+        double gyroZ = vec.z();
+
+    #if DEBUG_PRINT
+        Serial.print("accX: ");
+        Serial.print(accelX);
+        Serial.print(", accelY: ");
+        Serial.print(accelY);
+        Serial.print(", accelZ: ");
+        Serial.print(accelZ);
+        Serial.print("\n");
+        Serial.print("gyroX: ");
+        Serial.print(gyroX);
+        Serial.print(", gyroY: ");
+        Serial.print(gyroY);
+        Serial.print(", gyroZ: ");
+        Serial.print(gyroZ);
+        Serial.print("\n");
+    #endif
+
+        // If any of these are non zero, then we are in motion.
+        // Maybe round to the nearest hundredth or thousanth.
+        if(abs(accelX) > 0.2 || abs(accelY) > 0.2 || abs(accelZ) > 0.3
+                || abs(gyroX) > 0.05 || abs(gyroY) > 0.05 || abs(gyroZ) > 0.05) {
+
+            double seconds = (double)_deltaTime / 1000000.0;
+
+            if(_calibrationAccel != 0 || _calibrationSys != 0) {
+                _accSpeedX += accelX * seconds;
+                _accSpeedY += accelY * seconds;
+                _accSpeedZ += accelZ * seconds;
+                //
+                _accDistX += _accSpeedX * seconds;
+                _accDistY += _accSpeedY * seconds;
+                _accDistZ += _accSpeedZ * seconds;
+            }
+
+            if(_calibrationGyro != 0) {
+                _gyroDegreesX += gyroX * DEG_PER_RAD * seconds;
+                _gyroDegreesY += gyroY * DEG_PER_RAD * seconds;
+                _gyroDegreesZ += gyroZ * DEG_PER_RAD * seconds;
+            }
+            _inMotion = true;
+        } else {
+            // Decay the speed derived from linear acceleration.
+            _accSpeedX *= 0.9;
+            _accSpeedY *= 0.9;
+            _accSpeedZ *= 0.9;
+            _inMotion = false;
         }
-        _inMotion = true;
-    } else {
-        // Decay the speed derived from linear acceleration.
-        _accSpeedX *= 0.9;
-        _accSpeedY *= 0.9;
-        _accSpeedZ *= 0.9;
-        _inMotion = false;
+
+        // Current Temperature in C:
+        /* Get the current temperature */
+        _temperature = _bn055->getTemp();
     }
 
-    // Current Temperature in C:
-    /* Get the current temperature */
-    _temperature = _bn055->getTemp();
-}
+    void setTimestamp(unsigned long milliseconds, unsigned short microseconds) {
 
-void setTimestamp(unsigned long milliseconds, unsigned short microseconds) {
+        _prevMilliseconds = _milliseconds; // Store the previous time-stamp.
+        _prevMicroseconds = _microseconds;
+        _milliseconds = milliseconds; // Store the current time-stamp.
+        _microseconds = microseconds;
+        // Now we have delta T in microseconds.
+        _deltaTime = ((_milliseconds * 1000) + _microseconds)
+            - ((_prevMilliseconds * 1000) + _prevMicroseconds);
+    }
 
-    _prevMilliseconds = _milliseconds; // Store the previous time-stamp.
-    _prevMicroseconds = _microseconds;
-    _milliseconds = milliseconds; // Store the current time-stamp.
-    _microseconds = microseconds;
-    // Now we have delta T in microseconds.
-    _deltaTime = ((_milliseconds * 1000) + _microseconds)
-        - ((_prevMilliseconds * 1000) + _prevMicroseconds);
-}
+    unsigned long getMilliseconds(void) {
+        return _milliseconds;
+    }
 
-unsigned long getMilliseconds(void) {
-    return _milliseconds;
-}
+    unsigned short getMicroseconds(void) {
+        return _microseconds;
+    }
 
-unsigned short getMicroseconds(void) {
-    return _microseconds;
-}
+    float getHeading(void) {
+        return _heading;
+    }
 
-float getHeading(void) {
-    return _heading;
-}
+    float getPitch(void) {
+        return _pitch;
+    }
 
-float getPitch(void) {
-    return _pitch;
-}
+    float getRoll(void) {
+        return _roll;
+    }
 
-float getRoll(void) {
-    return _roll;
-}
+    // Meters per second
+    float getAccSpeedX(void) {
+        return _accSpeedX;
+    }
 
-// Meters per second
-float getAccSpeedX(void) {
-    return _accSpeedX;
-}
+    float getAccSpeedY(void) {
+        return _accSpeedY;
+    }
 
-float getAccSpeedY(void) {
-    return _accSpeedY;
-}
+    float getAccSpeedZ(void) {
+        return _accSpeedZ;
+    }
 
-float getAccSpeedZ(void) {
-    return _accSpeedZ;
-}
+    float getAccDistX(void) {
+        return _accDistX;
+    }
 
-float getAccDistX(void) {
-    return _accDistX;
-}
+    float getAccDistY(void) {
+        return _accDistY;
+    }
 
-float getAccDistY(void) {
-    return _accDistY;
-}
+    float getAccDistZ(void) {
+        return _accDistZ;
+    }
 
-float getAccDistZ(void) {
-    return _accDistZ;
-}
+    // Maybe long int is needed
+    int getGyroDegreesX(void) {
+        return _gyroDegreesX;
+    }
 
-// Maybe long int is needed
-int getGyroDegreesX(void) {
-    return _gyroDegreesX;
-}
+    int getGyroDegreesY(void) {
+        return _gyroDegreesY;
+    }
 
-int getGyroDegreesY(void) {
-    return _gyroDegreesY;
-}
+    int getGyroDegreesZ(void) {
+        return _gyroDegreesZ;
+    }
 
-int getGyroDegreesZ(void) {
-    return _gyroDegreesZ;
-}
+    bool getInMotion(void) {
+        return _inMotion;
+    }
 
-bool getInMotion(void) {
-    return _inMotion;
-}
+    unsigned char getCalibrationSys(void) {
+        return _calibrationSys;
+    }
 
-unsigned char getCalibrationSys(void) {
-    return _calibrationSys;
-}
+    unsigned char getCalibrationGyro(void) {
+        return _calibrationGyro;
+    }
 
-unsigned char getCalibrationGyro(void) {
-    return _calibrationGyro;
-}
+    unsigned char getCalibrationAccel(void) {
+        return _calibrationAccel;
+    }
 
-unsigned char getCalibrationAccel(void) {
-    return _calibrationAccel;
-}
+    unsigned char getCalibrationMag(void) {
+        return _calibrationMag;
+    }
 
-unsigned char getCalibrationMag(void) {
-    return _calibrationMag;
-}
+    int8_t getTemperature(void) {
+        return _temperature;
+    }
 
-int8_t getTemperature(void) {
-    return _temperature;
-}
+    unsigned int getDeltaMilliseconds(void) {
+        return (unsigned int)(_deltaTime / 1000.0);
+    }
 
-unsigned int getDeltaMilliseconds(void) {
-    return (unsigned int)(_deltaTime / 1000.0);
-}
+    void readCommands() {
+        bool commandValid = true;
+        while(Serial.available() > 0) {
+            // Read the incoming bytes:
+            unsigned char command = Serial.read();
+
+    #if DEBUG_PRINT
+            Serial.print("Received command: ");
+            Serial.print(command);
+            Serial.print(", param: ");
+    #endif
+
+            int value = -1;
+            if(Serial.read() == ':') {
+                value = Serial.parseInt();
+                if(command == CMD_ZERO_FIELDS) {
+                    // TODO: call zero fields function.
+                } else if(command == CMD_RESET) {
+                    Serial.print("\nResetting\n");
+                    Serial.flush(); // Make sure this is printed.
+                    resetFunc();  //call reset
+                } else {
+                    commandValid = false;
+                }
+
+    #if DEBUG_PRINT
+                Serial.print(value);
+                Serial.print("\n");
+    #endif
+
+                if(Serial.read() != ';' && !commandValid) {
+                    Serial.print("RX bad cmd or EOM, sys.\n");
+                }
+            }
+        }
+    }
+
+    enum InputCommands {
+        CMD_RESET       = 0x61, // 'a' abort, reset the micro-controller.
+        CMD_ZERO_FIELDS = 0x7a, // 'z' zero out all the fields that we integrate.
+    };
 
 private:
 
-Adafruit_BNO055* _bn055;
+    Adafruit_BNO055* _bn055;
 
-float _heading = 0.0;
-float _roll = 0.0;
-float _pitch = 0.0;
-unsigned char _calibrationSys = 0;
-unsigned char _calibrationGyro = 0;
-unsigned char _calibrationAccel = 0;
-unsigned char _calibrationMag = 0;
+    float _heading = 0.0;
+    float _roll = 0.0;
+    float _pitch = 0.0;
+    unsigned char _calibrationSys = 0;
+    unsigned char _calibrationGyro = 0;
+    unsigned char _calibrationAccel = 0;
+    unsigned char _calibrationMag = 0;
 
-bool _inMotion = false;
+    bool _inMotion = false;
 
-double _accSpeedX = 0.0;
-double _accSpeedY = 0.0;
-double _accSpeedZ = 0.0;
+    double _accSpeedX = 0.0;
+    double _accSpeedY = 0.0;
+    double _accSpeedZ = 0.0;
 
-double _accDistX = 0.0;
-double _accDistY = 0.0;
-double _accDistZ = 0.0;
+    double _accDistX = 0.0;
+    double _accDistY = 0.0;
+    double _accDistZ = 0.0;
 
-double _gyroDegreesX = 0.0;
-double _gyroDegreesY = 0.0;
-double _gyroDegreesZ = 0.0;
+    double _gyroDegreesX = 0.0;
+    double _gyroDegreesY = 0.0;
+    double _gyroDegreesZ = 0.0;
 
-int8_t _temperature = 0;
+    int8_t _temperature = 0;
 
-unsigned long _milliseconds = 0;
-unsigned short _microseconds = 0;
+    unsigned long _milliseconds = 0;
+    unsigned short _microseconds = 0;
 
-unsigned long _prevMilliseconds = 0;
-unsigned short _prevMicroseconds = 0;
+    unsigned long _prevMilliseconds = 0;
+    unsigned short _prevMicroseconds = 0;
 
-unsigned long _deltaTime = 0; // Time in microseconds between now an previous.
+    unsigned long _deltaTime = 0; // Time in microseconds between now an previous.
 
-const double OFFSET_ACCEL_X = 0.01;
-const double OFFSET_ACCEL_Y = 00.01;
-const double OFFSET_ACCEL_Z = 0.13;
+    const double OFFSET_ACCEL_X = 0.01;
+    const double OFFSET_ACCEL_Y = 00.01;
+    const double OFFSET_ACCEL_Z = 0.13;
 };
 
 // Format sensor data and other platform data into messages to send to the PC:
@@ -358,7 +408,7 @@ void sendSystemMessage(InertialController* ctrl) {
  */
 
 /* Set the delay between fresh samples */
-#define BNO055_SAMPLERATE_DELAY_MS (100)
+#define BNO055_SAMPLERATE_DELAY_MS 90
 
 InertialController* controller;
 
@@ -383,13 +433,9 @@ void setup(void) {
  *
  ****************************************************************************/
 void loop(void) {
+	controller->readCommands();
     controller->pollSensorData();
     sendSystemMessage(controller);
-
     controller->setTimestamp(millis(), micros() % 1000);
-
-    int delta = BNO055_SAMPLERATE_DELAY_MS - (int)controller->getDeltaMilliseconds();
-    if(delta > 0) {
-        delay(BNO055_SAMPLERATE_DELAY_MS - delta);
-    }
+    delay(BNO055_SAMPLERATE_DELAY_MS);
 }
