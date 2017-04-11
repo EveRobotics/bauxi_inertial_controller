@@ -1,4 +1,3 @@
-#include <Math.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
@@ -13,7 +12,7 @@
 
 void(*resetFunc)(void) = 0; //declare reset function @ address 0
 
-const double DEG_PER_RAD = 180.0 / M_PI;
+const double DEG_PER_RAD = 180.0 / 3.141592654;
 /*
  * Orientation Sensor Test
  *
@@ -262,7 +261,7 @@ public:
         return _calibrationMag;
     }
 
-    int8_t getTemperature(void) {
+    unsigned char getTemperature(void) {
         return _temperature;
     }
 
@@ -433,7 +432,7 @@ void setup(void) {
  *
  ****************************************************************************/
 void loop(void) {
-	controller->readCommands();
+    controller->readCommands();
     controller->pollSensorData();
     sendSystemMessage(controller);
     controller->setTimestamp(millis(), micros() % 1000);
