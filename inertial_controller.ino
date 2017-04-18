@@ -138,7 +138,7 @@ public:
 
         // If any of these are non zero, then we are in motion.
         // Maybe round to the nearest hundredth or thousanth.
-        if(abs(accelX) > 0.2 || abs(accelY) > 0.2 || abs(accelZ) > 0.3
+        if(abs(accelX) > 0.2 || abs(accelY) > 0.2 || abs(accelZ) > 0.4
                 || abs(gyroX) > 0.05 || abs(gyroY) > 0.05 || abs(gyroZ) > 0.05) {
 
             double seconds = (double)_deltaTime / 1000000.0;
@@ -380,7 +380,7 @@ void sendSystemMessage(InertialController* ctrl) {
             + ctrl->getCalibrationMag() + ","
             + ctrl->getTemperature() + ","
             + ctrl->getMilliseconds() + ","
-            + ctrl->getMicroseconds() + ",\n";
+            + ctrl->getMicroseconds() + "\n";
 
     Serial.print(message);
 }
